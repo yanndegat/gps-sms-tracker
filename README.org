@@ -1,0 +1,39 @@
+* Description
+
+hack stuff to read sms and gps locations from a waveshare gps/gms hat
+
+* SMS
+
+use gammu-smsd with the smsdrc to execute the `./runonreceive.sh` script
+when a sms is received.
+
+The script answers back last known gps location
+
+Whitelist phonenumbers in smsdrc
+
+* GPS
+
+  Read gps location and stores lat/lon/alt/date into sqlite db
+
+** pre requisites
+
+install racket 7
+install libserialport
+
+** build
+ #+BEGIN_SRC shell
+ raco pkg install libserialport
+ raco exe gps.rkt
+ #+END_SRC
+
+** run
+ #+BEGIN_SRC shell
+DB=./locations.sqlite ACTION=loc TTY="/dev/ttyUSB1" sudo -E ./gps
+ #+END_SRC
+
+* Is this useful ? 
+
+You can embed this code on a raspberry with a battery, & take it in your bag
+when hiking. People can then track you by sending an sms to your raspberry.
+
+Ok, for smartphone owners, this is totally useless.
