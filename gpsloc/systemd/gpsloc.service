@@ -1,0 +1,17 @@
+[Unit]
+Description=GPS locator
+Requires=gpsloc-power.service
+
+
+[Service]
+Type=oneshot
+
+Environment=TTY=/dev/ttyAMA0
+Environment=DB=/var/lib/gpsloc/locations.sqlite
+EnvironmentFile=-/etc/gpsloc
+
+ExecStartPre=-/bin/sh -c '/usr/bin/mkdir -p $(dirname $DB)' 
+ExecStart=/usr/local/bin/gpsloc --command loc
+
+[Install]
+WantedBy=multi-user.target

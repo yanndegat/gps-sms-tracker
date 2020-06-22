@@ -1,4 +1,7 @@
-gps
+gpsloc/gpsloc
 gammu-smsdrc
 *.sqlite
 *.db
+dbs
+
+KoboRoot.tgz

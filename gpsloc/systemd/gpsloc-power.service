@@ -1,0 +1,14 @@
+[Unit]
+Description=GPS locator power on
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=TTY=/dev/ttyAMA0
+EnvironmentFile=-/etc/gpsloc
+
+ExecStart=/usr/local/bin/gpsloc --command poweron
+ExecStop=/usr/local/bin/gpsloc --command poweroff
+
+[Install]
+WantedBy=multi-user.target

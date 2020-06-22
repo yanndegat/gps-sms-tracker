@@ -1,0 +1,34 @@
+* Description
+
+Remaining stuff to be done
+
+* TODO build a static mbtiles map of pays de la loire
+- [X] mbtiles vector
+- [ ] mbtiles png
+- [ ] fork all repos
+
+* TODO build map software for pi
+- [ ] script to clone
+- [ ] makefile to build/install & run soft
+- 
+* TODO build sms sofware for pi
+- [ ] script to clone
+- [ ] makefile to build/install & run soft
+
+* TODO build gps software for pi
+- [ ] script to clone
+- [X] makefile to build/install & run soft
+
+* TODO plug kobo?
+
+hard stuff
+** pi
+ - serve files on http  ? 
+ - setup usbnet
+ 
+
+** kobo 
+- display png on http ? brower on usbnet ?
+- usbnet
+- 
+

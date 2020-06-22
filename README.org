@@ -1,6 +1,10 @@
+
 * Description
 
-hack stuff to read sms and gps locations from a waveshare gps/gms hat
+I wanna bring on my pi when hiking/biking in 
+bretagne/pays de la loire(france) to display a map of my
+current gps location on my kobo aurora ereader, 
+and my wife can ping my location by sending an sms
 
 * SMS
 
@@ -18,22 +22,44 @@ Whitelist phonenumbers in smsdrc
 ** pre requisites
 
 install racket 7
-install libserialport
 
 ** build
  #+BEGIN_SRC shell
- raco pkg install libserialport
- raco exe gps.rkt
+ make -C gpsloc deps build
  #+END_SRC
 
 ** run
  #+BEGIN_SRC shell
-DB=./locations.sqlite ACTION=loc TTY="/dev/ttyUSB1" sudo -E ./gps
+DB=./locations.sqlite ACTION=loc TTY="/dev/ttyUSB1" sudo -E ./gpsloc
  #+END_SRC
+
+** install 
+
+Install systemd units to automatically crawl location fom gps and store it
+on a local DB
+
+ #+BEGIN_SRC shell
+sudo make -C ./gpsloc install
+ #+END_SRC
+
+
+
+* Maps
+
+Draws a map of current location (+gpx) from a static png mbtiles 
+file served by a small mbtiles server
+
+* Kobo eReader
+
+Display map served by PI on eReader. refresh on timer
 
 * Is this useful ? 
 
-You can embed this code on a raspberry with a battery, & take it in your bag
-when hiking. People can then track you by sending an sms to your raspberry.
+a ereader is useful for:
 
-Ok, for smartphone owners, this is totally useless.
+- reading maps under the sun
+- saving batteries
+- reading books at night
+
+Ok, for smartphone+garmin owners, this is totally useless.
+

@@ -1,0 +1,110 @@
+
+* Description
+
+This is a memo on how to build & serve offline static maps
+
+This is hard stuff because you first have to build a tiles server to be able to 
+produce a "png pre rendered" tileset, which you'll later serve on the pi
+
+
+1. (host) generate large vectorial mbtiles
+2. (host) serve tiles to download smaller tileset in png format with proper style (here toner for eink screen)
+3. (pi) use png prerendered tileset and serve
+4. (pi) use a tool to generate maps from the server (create-static-map) with proper resolution
+
+* generate a mbtiles file for your global area, containing vectorial tiles
+Because by using an online one, you'd probably hit quotas issues
+
+We'll use openmaptiles for that purpose
+
+#+BEGIN_SRC: shell
+cd ~
+git clone https://github.com/openmaptiles/openmaptiles
+cd openmaptiles
+echo customize the .env file according to your needs
+./quickstart.sh pays-de-la-loire
+#+END_SRC
+
+#+BEGIN_NOTE
+you probably want to to from zoom 0 to 16
+zoom 15 may not be suitable enough for hiking
+can take several hours
+
+if you cant produce your mbtiles because the area is too large
+then build smaller mbtiles & merge them with a small bash snippet.
+(see [[file:merge-mbtiles][merge-mbtiles]])
+#+END_NOTE
+
+
+* Serve your tiles with a proper style.css
+
+#+BEGIN_SRC: shell
+docker run --name tileserver --rm \
+   -v $(pwd)/openmaptiles/data:/data \
+   -v $(pwd)/gps-sms-tracker/maps/style.json:/usr/src/app/node_modules/tileserver-gl-styles/styles/toner/style.json \
+   -p 8080:80 \
+   klokantech/tileserver-gl:c3320fc79768 --mbtiles /data/tiles.mbtiles
+#+END_SRC
+
+so that you can download pre generated pics for all zoom levels
+
+
+* generate a mbtiles file of a refined area (a bbox) containing pre rendered tiles (png) according to your style
+using a dedicated and appropriate tool
+
+#+BEGIN_SRC: shell
+docker exec -it tileserver npm install -g tl mbtiles tilelive-file tilelive-http
+docker exec -it tileserver tl copy -z 0 -Z 15 -b "-3.307 47.263756 -3.0003 47.418698" "http://localhost/styles/toner/{z}/{x}/{y}.png" mbtiles://./belleile.mbtiles
+docker exec -it tileserver tl copy -z 0 -Z 15 -b "-1.509075 47.132053 -1.405907 47.188196" "http://localhost/styles/toner/{z}/{x}/{y}.png" mbtiles://./vertou.mbtiles
+
+mkdir ~/tilesets
+docker cp tileserver:/belleile.mbtiles ./tilesets
+#+END_SRC
+
+#+BEGIN_NOTE
+- Same shit, download generated png tiles can take several hours AND run into diskfull issues
+  probably we can compress the pngs pretty well as they are all B&W with toner style. To be tested
+- we could preinstall npm modules by customizing klokantech/tileserver-gl dockerfile
+- Use https://bboxfinder.com to find your bbox
+
+# pays de la loire
+BBOX=-4.064941,46.177929,0.285645,47.639485
+
+-4.185791,46.177929,0.285645,47.967859
+#+END_NOTE
+
+
+* (pihosted) generate a static map image (png) for a location + gpx + zoom level
+first, use a small portable mbtiles server to serve static tiles
+
+#+BEGIN_SRC: shell
+git clone https://github.com/yanndegat/mbtileserver
+cd mbtileserver
+go install
+cd ~
+~/go/bin/mbtileserver -d ~/openmaptiles/data
+#+END_SRC
+
+then use a dedicated and appropriate tool to generate a map png
+
+#+BEGIN_SRC: shell
+go get github.com/yanndegat/go-staticmaps/create-static-map
+
+LOC=$(sqlite3 /var/lib/gpsloc/locations.sqlite "select lat ||','|| lon  from locations order by datetime desc limit 1";)
+~/go/bin/create-static-map -c "$LOC" \
+   --type mbtileserver \
+   --width 600 \
+   --height 400 \
+   -o /tmp/map.png \
+   -m "color:black|$LOC" \
+   -z 15  \
+    --path "color:black|weight:4|gpx:/tmp/test.gpx"
+#+END_SRC
+
+#+BEGIN_NOTE
+The Kobo aura resolution is 768x1024 with 212ppi
+the resolution is not readable so the trick is to generate smaller images
+and then use imagemagick to resize them so it can be readable
+
+convert /tmp/map.png -resize 768x1024! /tmp/map.png
+#+END_NOTE
