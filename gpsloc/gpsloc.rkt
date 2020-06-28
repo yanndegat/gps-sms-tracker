@@ -1,99 +1,51 @@
 #lang racket
-(require racket/bytes)
-(require racket/string)
 
-(require db)
-(require libserialport)
+(require racket/date)
+(require racket/string)
+(require racket/logging)
+(require gregor)
 
 (require "lib/location.rkt")
+(require "lib/gpsdialer.rkt")
 
-(module+ test (require rackunit))
+(define commands (list gpsdialer/command-spec))
+(define help-commands (map (lambda (c) (dict-ref c 'cmd)) commands))
 
-(define DB
-  (make-parameter (let ([path (getenv "DB")])
-                    (cond
-                      [(not path) "./locations.sqlite"]
-                      [else path]))))
+(define verbose (make-parameter (cond
+                                [(equal? "1" (getenv "GPSLOC_VERBOSE")) #t]
+                                [else #f])))
 
-(define COMMAND
-  (make-parameter (let ([command (getenv "COMMAND")])
-                    (cond
-                      [(not command) 'loc]
-                      [else (string->symbol command)]))))
-(define TTY
-  (make-parameter (let ([dev (getenv "TTY")])
-                    (cond
-                      [(not dev) "dev/ttyUSB0"]
-                      [else dev]))))
+(define (log-level) (if (verbose) 'debug 'info))
 
-(define DB_SCHEMA "CREATE TABLE IF NOT EXISTS locations (lat REAL, lon REAL, alt REAL, datetime TEXT)")
-(define DB_INSERT_LOC "INSERT INTO locations VALUES ($1, $2, $3, datetime('now'))")
+(define (print-log-msg! level msg)
+  (eprintf "~a ~a ~a\n" (moment->iso8601 (with-timezone (now) (current-timezone))) (string-upcase (symbol->string level)) msg))
 
-(define COMMANDS (hash 'poweron #"AT+CGNSPWR=1"
-                      'poweroff #"AT+CGNSPWR=0"
-                      'loc #"AT+CGNSINF"
-                      'time #"AT+CCLK?"
-                      'timesyncstatus #"AT+CLTS?"
-                      'powerstatus #"AT+CGNSPWR?"
-                      'gpsfixstatus #"AT+CGPSSTATUS?"))
-
-(define RESULTS (hash 'loc "+CGNSINF: "
-                      'error "ERROR\r"
-                      'ok "OK\r"))
-
-(define (send-command command port)
-  (let* ([bytes (bytes-append* (hash-ref COMMANDS command) '(#"\n"))]
-         [void (displayln (format "sending bytes ~s" bytes))]
-         [bytes-sent (write-bytes bytes port)])
-    (displayln (format "~a bytes sent" bytes-sent))))
-
-(define (receive in)
-  (let loop ()
-    (let ([result (read-line in)])
-      (displayln (format "received ~s" result))
-      (cond [(equal? result (hash-ref RESULTS 'ok)) (displayln "done")]
-            [(equal? result (hash-ref RESULTS 'error)) (displayln "oups!")]
-            [(eof-object? result) (displayln "oups!")]
-            [(string-prefix? result (hash-ref RESULTS 'loc))
-             (and (store-location (decode-location result)) (loop))]
-            [else (and (sleep 1) (loop))]))))
-
-(define (decode-location locstr)
-  (displayln (format "decoding location ~s." locstr))
-  (apply location (string-split
-                   (string-trim locstr (hash-ref RESULTS 'loc)) ",")))
-
-(define (store-location loc)
-  (displayln (format "storing location into ~s" (DB)))
-  (let ([db (sqlite3-connect #:database (DB) #:mode 'create)])
-    (query-exec db DB_SCHEMA)
-    (query-exec db DB_INSERT_LOC
-                (location-latitude loc)
-                (location-longitude loc)
-                (location-altitude loc))))
-
-(define (main)
-  (define s-ports (serial-ports))
-  (unless (set-member? s-ports (TTY))
-    (error (format "~s is not a valid serial port ~s" (TTY) s-ports)))
-
-  (unless (sync/timeout 5
-                        (thread (lambda ()
-                                  (displayln "dialing... ")
-                                  (define-values (in out) (open-serial-port (TTY) #:baudrate 115200))
-                                  (send-command (COMMAND) out)
-                                  (receive in))))
-    (error (format "could not dial with ~s" (TTY)))))
-
+(define (call fn args)
+  (let ([res
+         (with-handlers ([exn:fail? (λ (exn)
+                                      (print-log-msg! 'error (exn-message exn))
+                                      )])
+           (with-intercepted-logging
+             (lambda (l) (print-log-msg! (vector-ref l 0) (vector-ref l 1)))
+             (lambda () (fn args))
+             (log-level)))])
+    (if res
+        (exit 0)
+        (exit 1))))
 
 (module* main #f
     (parse-command-line "gpsloc" (current-command-line-arguments)
                         `((once-each
-                           [("-c" "--command") ,(lambda (f c) (COMMAND (string->symbol c)))
-                                               ("command" "loc,poweron,poweroff")]
-                           [("-d" "--db") ,(lambda (f c) (DB c))
+                           [("-v" "--verbose") ,(lambda (f) (verbose #t))
+                                               ("verbose mode")]
+                           [("-d" "--db") ,(lambda (f c) (location/DB c))
                                           ("database path" "path")]
-                           [("-t" "--tty") ,(lambda (f c) (TTY c))
+                           [("-t" "--tty") ,(lambda (f c) (gpsdialer/TTY c))
                                            ("tty" "/dev/ttyUSB0")]))
-                        (lambda (flags . args) (main))
-                        '()))
+                        (lambda (flags . args) (cond
+                                                 [(empty? args) (eprintf "missing command argument\n")]
+                                                 [else (let ([cmd (findf (lambda (c) (equal? (first args) (dict-ref c 'cmd))) commands)])
+                                                         (cond
+                                                           [cmd (call (dict-ref cmd 'fn) (rest args))]
+                                                           [else (eprintf "invalid command ~s\n" (first args))]))]))
+                        help-commands))

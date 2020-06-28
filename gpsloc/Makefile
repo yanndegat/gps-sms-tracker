@@ -14,6 +14,7 @@ build: ./gpsloc
 
 deps:
 	raco pkg install --batch --deps search-auto libserialport
+	raco pkg install --batch --deps search-auto gregor
 
 install:
 	@cp systemd/gpsloc.timer systemd/gpsloc-power.service systemd/gpsloc.service /etc/systemd/system

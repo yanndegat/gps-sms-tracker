@@ -1,7 +1,21 @@
 (module location racket
   (provide (struct-out location))
+  (provide (rename-out [DB location/DB]))
+  (provide (rename-out [store location/store]))
+
+  (require db)
 
   (module+ test (require rackunit))
+
+  (define DB
+    (make-parameter (let ([path (getenv "DB")])
+                      (cond
+                        [(not path) "./locations.sqlite"]
+                        [else path]))))
+
+
+  (define DB_SCHEMA "CREATE TABLE IF NOT EXISTS locations (lat REAL, lon REAL, alt REAL, datetime TEXT)")
+  (define DB_INSERT_LOC "INSERT INTO locations VALUES ($1, $2, $3, datetime('now'))")
 
   (struct location (GNSSrunstatus
                   Fixstatus
@@ -137,4 +151,14 @@
                                       "Reserved3"
                                       "cn0max"
                                       "HPA"
-                                      "VPA")))))
+                                      "VPA"))))
+
+(define (store loc)
+  (log-info (format "storing location into ~s" (DB)))
+  (let ([db (sqlite3-connect #:database (DB) #:mode 'create)])
+    (query-exec db DB_SCHEMA)
+    (query-exec db DB_INSERT_LOC
+                (location-latitude loc)
+                (location-longitude loc)
+                (location-altitude loc))))
+)
